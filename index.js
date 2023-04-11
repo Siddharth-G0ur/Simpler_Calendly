@@ -4,14 +4,13 @@ import { google } from 'googleapis'
 import bodyParser from "body-parser";
 const path = "./service-account-key.json"
 
-
 dotenv.config()
 
 const app = express();
 
 app.use(bodyParser.json());
 
-const PORT = process.env.PORT || 8000
+const PORT = 8000
 
 const scopes = ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/calendar.readonly'];
 
@@ -61,7 +60,7 @@ app.get('/google/redirect', async (req, res) => {
 })
 
 // create an event
-app.post('/schedule_meeting', async (req, res) => {
+app.post('/create_event', async (req, res) => {
 
     calendarAPI.events.insert({
         auth: oauth2Client,
@@ -72,38 +71,28 @@ app.post('/schedule_meeting', async (req, res) => {
           res.send('There was an error contacting the Calendar service: ' + err);
           return;
         }
-        res.json({"message":"success"});
+        res.json({"message":"Event Created"});
     });
     
 })
 
 // get the list of all the events
-app.get('/get_list', async (req, res)=>{
+app.post('/get_list', async (req, res)=>{
     calendarAPI.events.list({
         auth:oauth2Client,
         calendarId: 'primary',
-        timeMin: "2023-04-10T11:50:21.000Z",
+        timeMin: req.body.timeMin,
         maxResults: 10,
         singleEvents: true,
         orderBy: 'startTime',
       }, (err, res) => {
         if (err) return console.error('Error fetching events:', err);
-        const events = res.data.items;
-        console.log(res.data.items);
+        const events = JSON.stringify(res.data.items);
+        console.log("list Of Events: ", events);
     });
-   res.json({"message":"success"})
+
+    res.json({ "message":"Check Console" });
 })
-
-// const calendarId = 'hjain1904@gmail.com';
-
-// const requestBody = {
-//     timeMin: '2023-04-08T11:50:21.000Z',
-//     timeMax: '2023-04-11T11:50:21.000Z',
-//     timeZone: 'Asia/Kolkata',
-//     calendarExpansion:'5',
-//     items: [{id: calendarId}]
-//   };
-
 
 //check for the availability of the user
 app.post('/get_availability', async (req, res) => {
@@ -115,12 +104,42 @@ app.post('/get_availability', async (req, res) => {
         if (err) return console.error('Error:', err);
         console.log('Busy slots:', JSON.stringify(res.data.calendars));
     });
-    res.end();
 
+    res.json({ "message":"Check Console" });
 })
 
+// checking for the availability of the user and creating the event
+app.post('/schedule_meeting', async (req, res) => {
+    
+    calendarService.freebusy.query({
+        requestBody: req.body.checkBusy,
+        auth: process.env.API_KEY,
+      }, (err, res) => {
+        if (err) return console.error('Error:', err);
 
+        // if there are many non host we can iterate and find all the non host calender
+        const calendarId = req.body.checkBusy.items[0].id;
 
+        const availability = JSON.stringify(res.data.calendars[calendarId].busy);
+
+        if (availability.length <= 2) {
+            // If we are not busy create a new calendar event.
+            calendarAPI.events.insert({
+                auth: oauth2Client,
+                calendarId: 'primary',
+                resource: req.body.event,
+              }, function(err, event) {
+                if (err) {
+                  console.log('There was an error contacting the Calendar service: ' + err);
+                  return;
+                }
+                 return console.log('Event successfully created.');
+            });
+        }
+        else console.log("The Non Host is Busy")
+    });
+    res.json({ "message":"Check Console" });
+})
 
 app.listen(PORT, () => {
     console.log("app is running at", PORT);
